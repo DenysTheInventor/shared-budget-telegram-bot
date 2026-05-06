@@ -1,0 +1,281 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum HouseholdRole {
+  OWNER
+  MEMBER
+}
+
+enum CategoryType {
+  EXPENSE
+  INCOME
+}
+
+enum CurrencyCode {
+  THB
+  USD
+  UAH
+}
+
+enum DebtStatus {
+  OPEN
+  PARTIALLY_PAID
+  CLOSED
+  OVERDUE
+}
+
+enum DebtPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum LimitPeriod {
+  WEEKLY
+  MONTHLY
+  CUSTOM
+}
+
+enum RecurringFrequency {
+  WEEKLY
+  MONTHLY
+  EVERY_X_DAYS
+  CUSTOM
+}
+
+model User {
+  id                 String              @id @default(cuid())
+  telegramId         String              @unique
+  username           String?
+  firstName          String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  memberships        HouseholdMember[]
+  invitesCreated     Invite[]            @relation("InviteCreator")
+  transactions       Transaction[]
+  debts              Debt[]
+  debtPayments       DebtPayment[]
+  recurringPayments  RecurringPayment[]
+  notifications      Notification[]
+  auditLogs          AuditLog[]
+}
+
+model Household {
+  id                 String              @id @default(cuid())
+  name               String
+  baseCurrency       CurrencyCode        @default(UAH)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  members            HouseholdMember[]
+  invites            Invite[]
+  categories         Category[]
+  transactions       Transaction[]
+  debts              Debt[]
+  debtPayments       DebtPayment[]
+  limits             Limit[]
+  recurringPayments  RecurringPayment[]
+  notifications      Notification[]
+  auditLogs          AuditLog[]
+}
+
+model HouseholdMember {
+  id          String        @id @default(cuid())
+  householdId String
+  userId      String
+  role        HouseholdRole
+  createdAt   DateTime      @default(now())
+  household   Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([householdId, userId])
+  @@index([userId])
+}
+
+model Invite {
+  id              String      @id @default(cuid())
+  householdId     String
+  code            String      @unique
+  createdByUserId String
+  expiresAt       DateTime
+  usedAt          DateTime?
+  createdAt       DateTime    @default(now())
+  household       Household   @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  createdBy       User        @relation("InviteCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
+}
+
+model Category {
+  id                 String              @id @default(cuid())
+  householdId        String
+  name               String
+  type               CategoryType
+  emoji              String?
+  isDefault          Boolean             @default(false)
+  createdAt          DateTime            @default(now())
+  household          Household           @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  transactions       Transaction[]
+  limits             Limit[]
+  recurringPayments  RecurringPayment[]
+
+  @@unique([householdId, name, type])
+  @@index([householdId, type])
+}
+
+model Transaction {
+  id                    String       @id @default(cuid())
+  householdId           String
+  addedByUserId         String
+  type                  CategoryType
+  categoryId            String
+  originalAmount        Decimal      @db.Decimal(14, 2)
+  originalCurrency      CurrencyCode
+  convertedAmountUAH    Decimal      @db.Decimal(14, 2)
+  exchangeRate          Decimal      @db.Decimal(18, 8)
+  exchangeRateSource    String
+  exchangeRateTimestamp DateTime
+  note                  String?
+  transactionDate       DateTime
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  deletedAt             DateTime?
+  household             Household    @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  addedBy               User         @relation(fields: [addedByUserId], references: [id], onDelete: Cascade)
+  category              Category     @relation(fields: [categoryId], references: [id])
+
+  @@index([householdId, transactionDate])
+  @@index([householdId, type])
+}
+
+model Debt {
+  id                    String        @id @default(cuid())
+  householdId           String
+  addedByUserId         String
+  creditorName          String
+  originalAmount        Decimal       @db.Decimal(14, 2)
+  originalCurrency      CurrencyCode
+  convertedAmountUAH    Decimal       @db.Decimal(14, 2)
+  exchangeRate          Decimal       @db.Decimal(18, 8)
+  exchangeRateSource    String
+  exchangeRateTimestamp DateTime
+  dueDate               DateTime?
+  status                DebtStatus    @default(OPEN)
+  priority              DebtPriority  @default(MEDIUM)
+  note                  String?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  deletedAt             DateTime?
+  household             Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  addedBy               User          @relation(fields: [addedByUserId], references: [id], onDelete: Cascade)
+  payments              DebtPayment[]
+
+  @@index([householdId, status])
+  @@index([householdId, dueDate])
+}
+
+model DebtPayment {
+  id                    String       @id @default(cuid())
+  debtId                String
+  householdId           String
+  addedByUserId         String
+  originalAmount        Decimal      @db.Decimal(14, 2)
+  originalCurrency      CurrencyCode
+  convertedAmountUAH    Decimal      @db.Decimal(14, 2)
+  exchangeRate          Decimal      @db.Decimal(18, 8)
+  exchangeRateSource    String
+  exchangeRateTimestamp DateTime
+  paymentDate           DateTime
+  note                  String?
+  createdAt             DateTime     @default(now())
+  debt                  Debt         @relation(fields: [debtId], references: [id], onDelete: Cascade)
+  household             Household    @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  addedBy               User         @relation(fields: [addedByUserId], references: [id], onDelete: Cascade)
+}
+
+model Limit {
+  id             String       @id @default(cuid())
+  householdId    String
+  categoryId     String
+  amountUAH      Decimal      @db.Decimal(14, 2)
+  period         LimitPeriod
+  customStartDate DateTime?
+  customEndDate   DateTime?
+  warning50Sent  Boolean      @default(false)
+  warning80Sent  Boolean      @default(false)
+  warning100Sent Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  household      Household    @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  category       Category     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([householdId, categoryId, period])
+}
+
+model RecurringPayment {
+  id                    String              @id @default(cuid())
+  householdId           String
+  addedByUserId         String
+  type                  CategoryType
+  categoryId            String
+  originalAmount        Decimal             @db.Decimal(14, 2)
+  originalCurrency      CurrencyCode
+  note                  String?
+  frequency             RecurringFrequency
+  intervalDays          Int?
+  nextRunDate           DateTime
+  isActive              Boolean             @default(true)
+  autoCreateTransaction Boolean             @default(false)
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  household             Household           @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  addedBy               User                @relation(fields: [addedByUserId], references: [id], onDelete: Cascade)
+  category              Category            @relation(fields: [categoryId], references: [id])
+
+  @@index([householdId, isActive, nextRunDate])
+}
+
+model ExchangeRate {
+  id            String       @id @default(cuid())
+  baseCurrency  CurrencyCode
+  quoteCurrency CurrencyCode
+  rate          Decimal      @db.Decimal(18, 8)
+  source        String
+  fetchedAt     DateTime     @default(now())
+
+  @@index([baseCurrency, quoteCurrency, fetchedAt])
+}
+
+model Notification {
+  id          String     @id @default(cuid())
+  householdId String
+  userId      String
+  type        String
+  payloadJson Json
+  scheduledAt DateTime
+  sentAt      DateTime?
+  status      String
+  household   Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, scheduledAt])
+}
+
+model AuditLog {
+  id          String     @id @default(cuid())
+  householdId String
+  userId      String
+  action      String
+  entityType  String
+  entityId    String
+  beforeJson  Json?
+  afterJson   Json?
+  createdAt   DateTime   @default(now())
+  household   Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([householdId, entityType, entityId])
+}
