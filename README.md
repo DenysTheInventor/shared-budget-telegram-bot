@@ -25,6 +25,8 @@ The bot also accepts simple natural language messages such as `450 THB food`, `s
 
 ## Local development
 
+For a step-by-step launch checklist, see [docs/RUNBOOK.md](docs/RUNBOOK.md).
+
 1. Install dependencies:
 
    ```bash
